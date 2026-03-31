@@ -1,7 +1,7 @@
-# airflow/docker-compose.yml
-# Basado en la imagen oficial de Airflow 2.9 con ejecutor local
 x-airflow-common: &airflow-common
-  image: apache/airflow:2.9.2
+  build:
+    context: .
+    dockerfile: Dockerfile
   environment:
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
@@ -9,15 +9,16 @@ x-airflow-common: &airflow-common
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
     AIRFLOW__CORE__LOAD_EXAMPLES: "false"
     AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "true"
-    # Azure credentials inyectadas como env vars
     AZURE_STORAGE_CONN_STR: ${AZURE_STORAGE_CONN_STR}
     AZURE_SQL_CONN_STR: ${AZURE_SQL_CONN_STR}
     ALPHA_VANTAGE_API_KEY: ${ALPHA_VANTAGE_API_KEY}
+    _PIP_ADDITIONAL_REQUIREMENTS: ""  # vacío, se usa requirements.txt
   volumes:
     - ./dags:/opt/airflow/dags
     - ./logs:/opt/airflow/logs
     - ./plugins:/opt/airflow/plugins
-    - ../ingestion:/opt/airflow/ingestion  # código de extractores
+    - ./requirements.txt:/requirements.txt 
+    - ../ingestion:/opt/airflow/ingestion
   depends_on:
     postgres:
       condition: service_healthy
@@ -48,14 +49,14 @@ services:
 
   airflow-webserver:
     <<: *airflow-common
-    command: webserver
+    command: airflow webserver
     ports:
       - "8080:8080"
     restart: always
 
   airflow-scheduler:
     <<: *airflow-common
-    command: scheduler
+    command: airflow scheduler
     restart: always
 
 volumes:

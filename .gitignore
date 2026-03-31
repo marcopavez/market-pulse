@@ -141,3 +141,4 @@ cython_debug/
 !.env.example
 
 CONTEXT.md
+http_cache.sqlite

@@ -45,35 +45,46 @@ resource "azurerm_storage_data_lake_gen2_filesystem" "processed" {
   storage_account_id = azurerm_storage_account.datalake.id
 }
 
-# ── Azure SQL Database (Basic ~$5/mes) ────────────────────────
-resource "azurerm_mssql_server" "main" {
-  name                         = var.sql_server_name
-  resource_group_name          = azurerm_resource_group.main.name
-  location                     = azurerm_resource_group.main.location
-  version                      = "12.0"
-  administrator_login          = var.sql_admin_user
-  administrator_login_password = var.sql_admin_password
+# ── PostgreSQL Flexible Server (free tier) ────────────────────
+resource "azurerm_postgresql_flexible_server" "main" {
+  name                   = "psql-market-pulse-001"
+  resource_group_name    = azurerm_resource_group.main.name
+  location               = "eastus2"
+  version                = "16"
+  administrator_login    = var.sql_admin_user
+  administrator_password = var.sql_admin_password
+
+  sku_name   = "B_Standard_B1ms"  # free tier elegible
+  storage_mb = 32768              # 32GB — mínimo free tier
+
+  backup_retention_days        = 7
+  geo_redundant_backup_enabled = false
+
+  # free tier: solo disponible una vez por suscripción
+  create_mode = "Default"
+
+  tags = { project = "market-pulse" }
 }
 
-resource "azurerm_mssql_database" "warehouse" {
-  name      = "market-pulse-dw"
-  server_id = azurerm_mssql_server.main.id
-  sku_name  = "Basic"   # 5 DTUs, ~$5/mes
-  max_size_gb = 2
+resource "azurerm_postgresql_flexible_server_database" "warehouse" {
+  name      = "market_pulse_dw"
+  server_id = azurerm_postgresql_flexible_server.main.id
+  collation = "en_US.utf8"
+  charset   = "utf8"
 }
 
-# Firewall: permite IPs de GitHub Actions (rangos dinámicos)
-# + tu IP local para desarrollo
-resource "azurerm_mssql_firewall_rule" "allow_azure_services" {
-  name             = "AllowAzureServices"
-  server_id        = azurerm_mssql_server.main.id
-  start_ip_address = "0.0.0.0"
-  end_ip_address   = "0.0.0.0"
-}
-
-resource "azurerm_mssql_firewall_rule" "allow_local" {
+# Firewall: acceso desde tu IP local
+resource "azurerm_postgresql_flexible_server_firewall_rule" "allow_local" {
   name             = "AllowLocalDev"
-  server_id        = azurerm_mssql_server.main.id
+  server_id        = azurerm_postgresql_flexible_server.main.id
   start_ip_address = var.local_ip
   end_ip_address   = var.local_ip
+}
+
+# Firewall: acceso desde servicios Azure (GitHub Actions, etc.)
+resource "azurerm_postgresql_flexible_server_firewall_rule" "allow_azure_services" {
+  name             = "AllowAzureServices"
+  server_id        = azurerm_postgresql_flexible_server.main.id
+  start_ip_address = "0.0.0.0"
+  end_ip_address   = "0.0.0.0"
 }

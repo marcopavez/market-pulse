@@ -9,7 +9,7 @@ variable "storage_account_name" {
 
 variable "sql_server_name" {
   description = "Globally unique"
-  default     = "sql-market-pulse-001"
+  default     = "sql-market-pulse-002"
 }
 
 variable "sql_admin_user"     { sensitive = true }

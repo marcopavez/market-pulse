@@ -1,4 +1,4 @@
-# ingestion/extractors/yahoo_finance.py
+# ingestion/extractors/yfinance.py
 from __future__ import annotations
 
 import logging

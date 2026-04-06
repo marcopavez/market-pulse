@@ -12,6 +12,7 @@ x-airflow-common: &airflow-common
     AZURE_STORAGE_CONN_STR: ${AZURE_STORAGE_CONN_STR}
     AZURE_SQL_CONN_STR: ${AZURE_SQL_CONN_STR}
     ALPHA_VANTAGE_API_KEY: ${ALPHA_VANTAGE_API_KEY}
+    FRED_API_KEY: ${FRED_API_KEY:-}
     _PIP_ADDITIONAL_REQUIREMENTS: ""  # vacío, se usa requirements.txt
   volumes:
     - ./dags:/opt/airflow/dags
@@ -19,6 +20,8 @@ x-airflow-common: &airflow-common
     - ./plugins:/opt/airflow/plugins
     - ./requirements.txt:/requirements.txt 
     - ../ingestion:/opt/airflow/ingestion
+    - ../validation:/opt/airflow/validation
+    - ../dbt:/opt/airflow/dbt
   depends_on:
     postgres:
       condition: service_healthy

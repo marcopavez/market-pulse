@@ -1,0 +1,26 @@
+# dbt/market_pulse/profiles.yml
+#
+# Connection details are injected by the Airflow run_dbt task, which parses
+# AZURE_SQL_CONN_STR and sets individual DBT_* env vars before calling dbt run.
+#
+# For local development set the vars manually or via a .env file:
+#   export DBT_HOST=psql-market-pulse-001.postgres.database.azure.com
+#   export DBT_PORT=5432
+#   export DBT_USER=<admin>
+#   export DBT_PASSWORD=<password>
+#   export DBT_DBNAME=market_pulse_dw
+
+market_pulse:
+  target: prod
+  outputs:
+    prod:
+      type: postgres
+      host:     "{{ env_var('DBT_HOST') }}"
+      port:     "{{ env_var('DBT_PORT') | int }}"
+      user:     "{{ env_var('DBT_USER') }}"
+      password: "{{ env_var('DBT_PASSWORD') }}"
+      dbname:   "{{ env_var('DBT_DBNAME') }}"
+      schema: staging
+      sslmode: require
+      threads: 4
+      connect_timeout: 30

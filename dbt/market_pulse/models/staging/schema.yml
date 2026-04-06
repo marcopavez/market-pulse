@@ -1,0 +1,49 @@
+version: 2
+
+models:
+  - name: stg_prices
+    description: Cleaned and type-cast daily OHLCV prices from Yahoo Finance.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [date, ticker]
+    columns:
+      - name: date
+        description: Trading date.
+        tests:
+          - not_null
+      - name: ticker
+        description: Stock or ETF ticker symbol.
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['AAPL', 'MSFT', 'GOOGL', 'SPY', 'BTC-USD']
+      - name: open
+        tests: [not_null]
+      - name: high
+        tests: [not_null]
+      - name: low
+        tests: [not_null]
+      - name: close
+        tests: [not_null]
+      - name: volume
+        tests: [not_null]
+
+  - name: stg_macro
+    description: Cleaned macro economic indicator time series from FRED.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [date, series_id]
+    columns:
+      - name: date
+        description: Observation date.
+        tests: [not_null]
+      - name: series_id
+        description: FRED series identifier.
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['FEDFUNDS', 'CPIAUCSL', 'T10Y2Y', 'UNRATE', 'GDP', 'DGS10']
+      - name: metric_name
+        tests: [not_null]
+      - name: value
+        tests: [not_null]

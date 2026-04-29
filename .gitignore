@@ -149,3 +149,6 @@ http_cache.sqlite
 !.terraform.lock.hcl
 terraform.tfvars
 !terraform.tfvars.example
+
+# Claude Code (local-only settings)
+.claude/settings.local.json

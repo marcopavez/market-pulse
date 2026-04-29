@@ -1,6 +1,6 @@
 # CLAUDE.md — Market Pulse
 
-Financial data platform: ingest equity prices + macro indicators → ADLS → PostgreSQL → dbt → dashboards. Pipeline runs on Airflow (Docker); infra is Terraform on Azure.
+Financial data platform: ingest equity prices + macro indicators → Cloudflare R2 → Neon Postgres → dbt → dashboards. Pipeline runs on Airflow (Docker); infra is Terraform (Neon + Cloudflare providers).
 
 - Current phase status, infrastructure details, and code map: `CONTEXT.md`.
 - Full project guide (architecture diagram, repo tree, Azure resources, schemas): `docs/project-guide.md`.
@@ -13,10 +13,10 @@ Financial data platform: ingest equity prices + macro indicators → ADLS → Po
 airflow/dags/         ingestion_dag.py, callbacks.py
 airflow/              Dockerfile, docker-compose.yml, requirements.txt
 ingestion/extractors/ yfinance.py, fred.py
-ingestion/loaders/    adls.py
+ingestion/loaders/    r2.py
 dbt/market_pulse/     models/{staging,marts}, profiles.yml, dbt_project.yml
 validation/           raw_prices.py (raw GX), marts.py (mart GX)
-infra/                Terraform (main.tf, variables.tf, outputs.tf)
+infra/                Terraform: Neon + Cloudflare R2 (main.tf, variables.tf, outputs.tf)
 ```
 
 Schemas: `raw` (Airflow) → `staging` (dbt) → `intermediate` (reserved) → `marts` (dbt).
@@ -25,9 +25,9 @@ Schemas: `raw` (Airflow) → `staging` (dbt) → `intermediate` (reserved) → `
 
 ## Environment Variables
 
-Read from `.env` at Docker Compose startup. Never hardcode.
+Read from `airflow/.env` at Docker Compose startup. Never hardcode. See `.env.example` at repo root.
 
-`AZURE_STORAGE_CONN_STR`, `AZURE_SQL_CONN_STR`, `FERNET_KEY`, `SLACK_WEBHOOK_URL`, `ALPHA_VANTAGE_API_KEY` (reserved).
+`POSTGRES_URL` (Neon), `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_RAW`, `FERNET_KEY`, `FRED_API_KEY` (optional), `SLACK_WEBHOOK_URL` (optional).
 
 ---
 

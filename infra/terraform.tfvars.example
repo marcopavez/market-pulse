@@ -1,0 +1,11 @@
+# Copy to terraform.tfvars and fill values (terraform.tfvars is gitignored)
+
+neon_api_key         = "neon_api_xxxxxxxxxxxxxxxx"
+cloudflare_api_token = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+cloudflare_account_id = "your-account-id-from-dashboard"
+
+# Optional overrides — defaults are fine for portfolio use
+# neon_region_id       = "aws-us-east-1"
+# neon_database_name   = "market_pulse_dw"
+# r2_bucket_name       = "market-pulse-raw"
+# r2_location          = "ENAM"

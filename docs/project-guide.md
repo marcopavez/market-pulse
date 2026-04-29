@@ -6,7 +6,7 @@ Comprehensive reference. Originally lived in `CLAUDE.md`; moved here so `CLAUDE.
 
 ## Project Overview
 
-Market Pulse is a financial data platform that ingests equity prices and macro indicators, transforms them in PostgreSQL via dbt, and exposes analytics through Grafana and Power BI. The pipeline runs on Apache Airflow (Docker) and infrastructure is provisioned with Terraform on Azure.
+Market Pulse is a financial data platform that ingests equity prices and macro indicators, transforms them in Postgres via dbt, and exposes analytics through Grafana and Power BI. The pipeline runs on Apache Airflow (Docker) and infrastructure is provisioned with Terraform against Neon (Postgres) and Cloudflare R2 (object storage) — both free-tier permanent.
 
 ---
 
@@ -15,15 +15,15 @@ Market Pulse is a financial data platform that ingests equity prices and macro i
 ```
 yfinance / FRED API
        │
-  ingestion/           ← Python extractors + ADLS loader
+  ingestion/                ← Python extractors + R2 loader (boto3)
        │
-  ADLS Gen2 (raw)      ← Parquet files partitioned by date
+  Cloudflare R2 (raw)       ← Parquet files partitioned by date
        │
-  PostgreSQL (raw.*)   ← Raw tables loaded by Airflow
+  Neon Postgres (raw.*)     ← Raw tables loaded by Airflow
        │
-  dbt (staging → marts) ← Typed views + analytical fact tables
+  dbt (staging → marts)     ← Typed views + analytical fact tables
        │
-  Grafana / Power BI   ← Dashboards (Phase 3)
+  Grafana / Power BI        ← Dashboards (Phase 3)
 ```
 
 ---
@@ -32,7 +32,7 @@ yfinance / FRED API
 
 | Phase | Status | Scope |
 |-------|--------|-------|
-| 1 | ✅ Done | Ingestion: extractors, ADLS loader, Airflow DAG, Terraform |
+| 1 | ✅ Done | Ingestion: extractors, R2 loader, Airflow DAG, Terraform |
 | 2 | ✅ Done | dbt models, Great Expectations validation, anomaly alerts |
 | 3 | ⏳ Pending | Grafana dashboards, Power BI |
 | 4 | ⏳ Pending | README, unit tests, CI/CD demo |
@@ -55,7 +55,7 @@ market-pulse/
 │   │   ├── yfinance.py          # curl_cffi-backed Yahoo Finance fetcher
 │   │   └── fred.py              # FRED API extractor
 │   └── loaders/
-│       └── adls.py              # Upload/download Parquet to ADLS Gen2
+│       └── r2.py                # Upload/download Parquet to Cloudflare R2
 ├── dbt/market_pulse/
 │   ├── models/
 │   │   ├── staging/             # Typed + cleaned views over raw tables
@@ -94,26 +94,31 @@ market-pulse/
 
 ## Environment Variables
 
-All secrets are injected via `.env` (never committed). The Airflow Docker Compose reads them at startup.
+All secrets are injected via `airflow/.env` (never committed). The Airflow Docker Compose reads them at startup. Template at `.env.example`.
 
 | Variable | Used by | Purpose |
 |----------|---------|---------|
-| `AZURE_STORAGE_CONN_STR` | `loaders/adls.py` | ADLS Gen2 connection |
-| `AZURE_SQL_CONN_STR` | `ingestion_dag.py`, `validation/` | PostgreSQL Flexible Server |
+| `POSTGRES_URL` | `ingestion_dag.py`, `validation/`, `run_dbt` | Neon Postgres connection string |
+| `R2_ACCOUNT_ID` | `loaders/r2.py` | Cloudflare account (R2 endpoint) |
+| `R2_ACCESS_KEY_ID` | `loaders/r2.py` | R2 S3-compatible access key |
+| `R2_SECRET_ACCESS_KEY` | `loaders/r2.py` | R2 S3-compatible secret |
+| `R2_BUCKET_RAW` | `ingestion_dag.py` | Bucket for raw Parquet landing |
 | `FERNET_KEY` | Airflow | Airflow encryption key |
-| `ALPHA_VANTAGE_API_KEY` | (reserved) | Future data source |
+| `FRED_API_KEY` | `extractors/fred.py` | FRED macro extractor (optional) |
 | `SLACK_WEBHOOK_URL` | `callbacks.py` | Optional Slack alerting |
 
 ---
 
-## Azure Infrastructure
+## Cloud Infrastructure (free-tier permanent)
 
-| Resource | Name | Location |
-|----------|------|----------|
-| Resource Group | `rg-market-pulse` | eastus |
-| ADLS Gen2 | `stmarketpulse001` | containers: `raw`, `processed` |
-| PostgreSQL Flexible Server | `psql-market-pulse-001` | eastus2 |
-| Database | `market_pulse_dw` | — |
+| Resource | Provider | Name |
+|----------|----------|------|
+| Postgres project | Neon | `market-pulse` |
+| Postgres database | Neon | `market_pulse_dw` |
+| Postgres role | Neon | `market_pulse_app` |
+| Object storage bucket | Cloudflare R2 | `market-pulse-raw` |
+
+Provisioned via Terraform — see `infra/main.tf`. State is local (no remote backend).
 
 ---
 

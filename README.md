@@ -7,7 +7,7 @@ A financial data platform that collects equity prices and macroeconomic indicato
 ## Objectives
 
 - **Automate data ingestion** from Yahoo Finance (equity prices) and FRED (macro indicators) on a daily schedule.
-- **Store raw data** in Azure Data Lake Storage Gen2 as Parquet files and load it into PostgreSQL.
+- **Store raw data** in Cloudflare R2 as Parquet files and load it into Neon Postgres.
 - **Transform and model** raw data into reusable analytical fact tables using dbt (returns, volatility, correlations, macro overlay).
 - **Validate data quality** at every layer using Great Expectations, with Airflow tasks failing loudly on bad data.
 - **Alert on anomalies** — any ticker moving more than 10% in a single session triggers a Slack notification.
@@ -21,11 +21,11 @@ A financial data platform that collects equity prices and macroeconomic indicato
 |-------|-----------|
 | Orchestration | Apache Airflow 2 (Docker, LocalExecutor) |
 | Ingestion | Python · `yfinance` · `curl_cffi` · `httpx` |
-| Storage | Azure Data Lake Storage Gen2 (Parquet) |
-| Database | Azure PostgreSQL Flexible Server |
+| Object Storage | Cloudflare R2 (S3-compatible, free tier) |
+| Database | Neon Postgres (serverless, free tier) |
 | Transformation | dbt Core |
 | Validation | Great Expectations ≥ 1.0 |
-| Infrastructure | Terraform · Azure (eastus / eastus2) |
+| Infrastructure | Terraform (Neon + Cloudflare providers) |
 | Dashboards | Grafana · Power BI _(Phase 3)_ |
 | Alerting | Slack webhook |
 
@@ -47,7 +47,7 @@ market-pulse/
 │   │   ├── yfinance.py          # Yahoo Finance price fetcher (curl_cffi session)
 │   │   └── fred.py              # FRED macroeconomic data extractor
 │   └── loaders/
-│       └── adls.py              # Parquet upload/download to ADLS Gen2
+│       └── r2.py                # Parquet upload/download to Cloudflare R2 (boto3)
 ├── dbt/market_pulse/
 │   ├── models/
 │   │   ├── staging/             # Cleaned, typed views over raw tables
@@ -67,7 +67,7 @@ market-pulse/
 │   ├── raw_prices.py            # GX suite: raw.raw_prices
 │   └── marts.py                 # GX suites: fct_daily_returns, fct_volatility
 ├── infra/
-│   ├── main.tf                  # Azure resources (ADLS, PostgreSQL, resource group)
+│   ├── main.tf                  # Neon project + Cloudflare R2 bucket
 │   ├── variables.tf
 │   └── outputs.tf
 ├── CLAUDE.md                    # AI assistant context and conventions
@@ -81,10 +81,10 @@ market-pulse/
 
 ```
 Yahoo Finance ──┐
-                ├──► ADLS Gen2 (raw Parquet)
+                ├──► Cloudflare R2 (raw Parquet)
 FRED API ───────┘         │
                           ▼
-                  PostgreSQL raw.*
+                  Neon Postgres raw.*
                           │
                         dbt
                           │
@@ -159,12 +159,12 @@ FRED API ───────┘         │
 - Docker Desktop
 - Python 3.11+
 - Terraform CLI
-- Azure CLI (for infra provisioning)
+- A Neon account (https://neon.tech) and a Cloudflare account (https://dash.cloudflare.com)
 
 ### Running Airflow
 
 ```bash
-cp .env.example .env   # fill in Azure credentials
+cp .env.example airflow/.env   # fill in Neon + R2 credentials
 cd airflow
 docker compose up airflow-init   # first time only
 docker compose up -d
@@ -184,6 +184,7 @@ dbt test
 
 ```bash
 cd infra
+cp terraform.tfvars.example terraform.tfvars   # fill in API tokens
 terraform init
 terraform plan
 terraform apply
@@ -195,11 +196,14 @@ terraform apply
 
 | Variable | Purpose |
 |----------|---------|
-| `AZURE_STORAGE_CONN_STR` | ADLS Gen2 connection string |
-| `AZURE_SQL_CONN_STR` | PostgreSQL connection string (`postgresql://...`) |
+| `POSTGRES_URL` | Neon Postgres connection string (`postgresql://user:pass@host.neon.tech/db?sslmode=require`) |
+| `R2_ACCOUNT_ID` | Cloudflare account ID (used to build the R2 endpoint URL) |
+| `R2_ACCESS_KEY_ID` | R2 S3-compatible access key |
+| `R2_SECRET_ACCESS_KEY` | R2 S3-compatible secret |
+| `R2_BUCKET_RAW` | R2 bucket for raw Parquet landing (default `market-pulse-raw`) |
 | `FERNET_KEY` | Airflow encryption key |
+| `FRED_API_KEY` | FRED API key (optional; required for macro extraction) |
 | `SLACK_WEBHOOK_URL` | Slack incoming webhook (optional — alerts suppressed if unset) |
-| `ALPHA_VANTAGE_API_KEY` | Reserved for future data source |
 
 ---
 
@@ -207,7 +211,7 @@ terraform apply
 
 | Phase | Status | Description |
 |-------|--------|-------------|
-| 1 — Ingestion | ✅ Done | Extractors, ADLS loader, Airflow DAG, Terraform infra |
-| 2 — Transform & Validate | 🔜 Active | dbt models, Great Expectations, anomaly alerts, FRED DAG task |
+| 1 — Ingestion | ✅ Done | Extractors, R2 loader, Airflow DAG, Terraform infra |
+| 2 — Transform & Validate | ✅ Done | dbt models, Great Expectations, anomaly alerts, FRED DAG task |
 | 3 — Dashboards | ⏳ Pending | Grafana + Power BI |
 | 4 — Quality & Demo | ⏳ Pending | Unit tests, CI/CD, full README demo |

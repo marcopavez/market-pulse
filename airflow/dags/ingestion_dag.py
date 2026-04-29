@@ -23,6 +23,7 @@ ANOMALY_THRESHOLD = 0.10          # 10% daily move triggers an alert
 FRED_OBSERVATION_START = "2020-01-01"
 
 DBT_PROJECT_DIR = "/opt/airflow/dbt/market_pulse"
+RAW_BUCKET = "R2_BUCKET_RAW"      # env var name resolved at task time
 
 
 @dag(
@@ -41,21 +42,23 @@ def ingestion_dag() -> None:
 
     @task()
     def extract_and_load_prices(tickers: list[str]) -> dict[str, str]:
+        import os
         import sys
         ingestion_path = "/opt/airflow/ingestion"
         if ingestion_path not in sys.path:
             sys.path.insert(0, ingestion_path)
 
         from extractors.yfinance import fetch_prices
-        from loaders.adls import upload_parquet
+        from loaders.r2 import upload_parquet
 
+        bucket = os.environ[RAW_BUCKET]
         results = {}
         for ticker in tickers:
             df = fetch_prices(ticker, period="5d")
             blob_path = (
                 f"prices/{ticker}/{datetime.utcnow().strftime('%Y/%m/%d')}/{ticker}.parquet"
             )
-            upload_parquet(df=df, container="raw", blob_path=blob_path)
+            upload_parquet(df=df, bucket=bucket, blob_path=blob_path)
             results[ticker] = blob_path
 
         return results
@@ -73,14 +76,15 @@ def ingestion_dag() -> None:
         if ingestion_path not in sys.path:
             sys.path.insert(0, ingestion_path)
 
-        from loaders.adls import download_parquet
+        from loaders.r2 import download_parquet
 
         import os
         import psycopg2
         import urllib.parse as urlparse
 
-        conn_str = os.environ["AZURE_SQL_CONN_STR"]
+        conn_str = os.environ["POSTGRES_URL"]
         url = urlparse.urlparse(conn_str)
+        bucket = os.environ[RAW_BUCKET]
 
         conn = psycopg2.connect(
             host=url.hostname,
@@ -111,7 +115,7 @@ def ingestion_dag() -> None:
                 """)
 
             for ticker, blob_path in paths.items():
-                df = download_parquet(container="raw", blob_path=blob_path)
+                df = download_parquet(bucket=bucket, blob_path=blob_path)
 
                 with conn.cursor() as cur:
                     for _, row in df.iterrows():
@@ -148,7 +152,7 @@ def ingestion_dag() -> None:
         import os
         from raw_prices import validate_raw_prices as gx_validate
 
-        gx_validate(os.environ["AZURE_SQL_CONN_STR"])
+        gx_validate(os.environ["POSTGRES_URL"])
 
     @task()
     def detect_anomalies(_loaded: bool) -> None:
@@ -159,7 +163,7 @@ def ingestion_dag() -> None:
 
         from callbacks import send_alert
 
-        conn_str = os.environ["AZURE_SQL_CONN_STR"]
+        conn_str = os.environ["POSTGRES_URL"]
         url = urlparse.urlparse(conn_str)
         conn = psycopg2.connect(
             host=url.hostname,
@@ -215,39 +219,40 @@ def ingestion_dag() -> None:
 
     @task()
     def extract_and_load_macro() -> str:
-        """Fetch all FRED macro series and upload as a single Parquet bundle to ADLS."""
+        """Fetch all FRED macro series and upload as a single Parquet bundle to R2."""
+        import os
         import sys
         ingestion_path = "/opt/airflow/ingestion"
         if ingestion_path not in sys.path:
             sys.path.insert(0, ingestion_path)
 
         from extractors.fred import fetch_macro_bundle
-        from loaders.adls import upload_parquet
+        from loaders.r2 import upload_parquet
 
         df = fetch_macro_bundle(observation_start=FRED_OBSERVATION_START)
         date_str = datetime.utcnow().strftime("%Y/%m/%d")
         blob_path = f"macro/{date_str}/macro_bundle.parquet"
-        upload_parquet(df=df, container="raw", blob_path=blob_path)
+        upload_parquet(df=df, bucket=os.environ[RAW_BUCKET], blob_path=blob_path)
         logger.info("Macro bundle uploaded: %s (%d rows)", blob_path, len(df))
         return blob_path
 
     @task()
     def load_macro_to_postgres(macro_path: str) -> bool:
-        """Download the macro Parquet from ADLS and upsert into raw.raw_macro."""
+        """Download the macro Parquet from R2 and upsert into raw.raw_macro."""
         import sys
         ingestion_path = "/opt/airflow/ingestion"
         if ingestion_path not in sys.path:
             sys.path.insert(0, ingestion_path)
 
-        from loaders.adls import download_parquet
+        from loaders.r2 import download_parquet
 
         import os
         import psycopg2
         import urllib.parse as urlparse
 
-        df = download_parquet(container="raw", blob_path=macro_path)
+        df = download_parquet(bucket=os.environ[RAW_BUCKET], blob_path=macro_path)
 
-        conn_str = os.environ["AZURE_SQL_CONN_STR"]
+        conn_str = os.environ["POSTGRES_URL"]
         url = urlparse.urlparse(conn_str)
 
         conn = psycopg2.connect(
@@ -301,12 +306,12 @@ def ingestion_dag() -> None:
     def run_dbt(_prices_loaded: bool, _macro_loaded: bool) -> None:
         """
         Run dbt after both raw tables are populated.
-        Parses AZURE_SQL_CONN_STR into individual env vars that profiles.yml reads.
+        Parses POSTGRES_URL into individual env vars that profiles.yml reads.
         """
         import os
         import urllib.parse as urlparse
 
-        conn_str = os.environ["AZURE_SQL_CONN_STR"]
+        conn_str = os.environ["POSTGRES_URL"]
         url = urlparse.urlparse(conn_str)
 
         dbt_env = {
@@ -343,7 +348,7 @@ def ingestion_dag() -> None:
         import os
         from marts import validate_fct_daily_returns, validate_fct_volatility
 
-        conn_str = os.environ["AZURE_SQL_CONN_STR"]
+        conn_str = os.environ["POSTGRES_URL"]
         validate_fct_daily_returns(conn_str)
         validate_fct_volatility(conn_str)
 
